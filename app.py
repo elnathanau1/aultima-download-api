@@ -88,7 +88,7 @@ def get_episode():
 @app.route('/get/season', methods=['POST'])
 def get_season():
     result = q.enqueue(scrape_season, request)
-    return result
+    return result.get_id()
 
 
 @app.route('/status/season/<task_id>')
