@@ -88,7 +88,10 @@ def get_episode():
 @app.route('/get/season', methods=['POST'])
 def get_season():
     result = q.enqueue(scrape_season, request)
-    return result.get_id()
+    with Connection(redis.from_url(redis_url)):
+        worker = Worker(q)
+        worker.work()
+    return json.dumps({"task_id": result.get_id()})
 
 
 @app.route('/status/season/<task_id>')
@@ -107,6 +110,7 @@ def get_season_status(task_id):
     else:
         response_object = {"status": "error"}
     return jsonify(response_object)
+
 
 # @cache.memoize(50)
 @retry(stop_max_attempt_number=5, wait_random_min=1000, wait_random_max=4000)
