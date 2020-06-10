@@ -42,3 +42,6 @@ def unpack(p, a, c, k, e=None, d=None):
         if k[i]:
             p = re.sub('\\b' + int2base(i, a) + '\\b', k[i], p)
     return p
+
+def utility_health():
+    return "Found utility package"
