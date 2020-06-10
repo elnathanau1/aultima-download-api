@@ -58,7 +58,7 @@ def create_task():
     unpacked = eval('utility.unpack' + script[script.find('}(') + 1:-1])
     download_link = re.match(r'''var fone="(.*?)";''', unpacked)[1]
 
-    return jsonify("download_link", download_link), 200
+    return jsonify({"download_link":download_link}), 200
 
 
 @app.route('/get/episode', methods=['POST'])
