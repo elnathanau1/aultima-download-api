@@ -12,6 +12,8 @@ from retrying import retry
 from resources import utility
 from resources.stopwatch import Timer
 
+DEFAULT_MAX_WORKERS = 10
+
 config = {
     "DEBUG": True,  # some Flask specific configs
     "CACHE_TYPE": "simple",  # Flask-Caching related configs
@@ -78,6 +80,10 @@ def get_episode():
 
 @app.route('/get/season', methods=['POST'])
 def get_season():
+    if "MAX_WORKERS" in environ:
+        max_workers = environ.get("MAX_WORKERS")
+    else:
+        max_workers = DEFAULT_MAX_WORKERS
     # validate request body
     # refactor?
     if not request.json or not 'url' in request.json or not 'show_name' in request.json or not 'season' in request.json:
@@ -88,7 +94,7 @@ def get_season():
     # create thread pool
     episode_list = scrape_episode_list(request.json['url'], request.json['show_name'], request.json['season'])
     futures = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=DEFAULT_MAX_WORKERS) as executor:
         for name, link in episode_list:
             future = executor.submit(scrape_download_link_ep, link)
             futures.append((name, future))
