@@ -1,18 +1,25 @@
 import concurrent.futures
 import re
+import os
 from os import environ
 import cfscrape
 import flask
 from bs4 import BeautifulSoup
-from flask import request, jsonify
+from flask import request, jsonify, current_app
 from flask_caching import Cache
 import json
 from retrying import retry
+import redis
+from rq import Worker, Queue, Connection
 
 from resources import utility
 from resources.stopwatch import Timer
 
 DEFAULT_MAX_WORKERS = 10
+
+redis_url = os.getenv('REDISTOGO_URL', 'redis://localhost:6379')
+conn = redis.from_url(redis_url)
+q = Queue(connection=conn)
 
 config = {
     "DEBUG": True,  # some Flask specific configs
@@ -80,42 +87,26 @@ def get_episode():
 
 @app.route('/get/season', methods=['POST'])
 def get_season():
-    if "MAX_WORKERS" in environ:
-        max_workers = environ.get("MAX_WORKERS")
+    result = q.enqueue(scrape_season(), request)
+    return result
+
+
+@app.route('/status/season/<task_id>')
+def get_season_status(task_id):
+    with Connection(redis.from_url(current_app.config["REDIS_URL"])):
+        task = q.fetch_job(task_id)
+    if task:
+        response_object = {
+            "status": "success",
+            "data": {
+                "task_id": task.get_id(),
+                "task_status": task.get_status(),
+                "task_result": task.result,
+            },
+        }
     else:
-        max_workers = DEFAULT_MAX_WORKERS
-    # validate request body
-    # refactor?
-    if not request.json or not 'url' in request.json or not 'show_name' in request.json or not 'season' in request.json:
-        flask.abort(400)
-
-    timer = Timer()
-    timer.start()
-    # create thread pool
-    episode_list = scrape_episode_list(request.json['url'], request.json['show_name'], request.json['season'])
-    futures = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=DEFAULT_MAX_WORKERS) as executor:
-        for name, link in episode_list:
-            future = executor.submit(scrape_download_link_ep, link)
-            futures.append((name, future))
-
-    # get results
-    download_list = []
-    for name, future in futures:
-        try:
-            download_link = future.result()
-            download_list.append((name, download_link))
-        except:
-            app.logger.error("Failed to get download link for %s" % name)
-    app.logger.info(timer.stop())
-
-    json_list = []
-    for name, link in download_list:
-        json_list.append({'name': name, 'url': link})
-        app.logger.info("Finished %s" % name)
-
-    return json.dumps(json_list)
-
+        response_object = {"status": "error"}
+    return jsonify(response_object)
 
 # @cache.memoize(50)
 @retry(stop_max_attempt_number=5, wait_random_min=1000, wait_random_max=4000)
@@ -164,6 +155,44 @@ def scrape_episode_list(url, show_name, season):
         last_page = episode_list["last_page"]
 
     return return_list
+
+
+def scrape_season(new_request):
+    if "MAX_WORKERS" in environ:
+        max_workers = environ.get("MAX_WORKERS")
+    else:
+        max_workers = DEFAULT_MAX_WORKERS
+    # validate request body
+    # refactor?
+    if not new_request.json or not 'url' in new_request.json or not 'show_name' in new_request.json or not 'season' in new_request.json:
+        flask.abort(400)
+
+    timer = Timer()
+    timer.start()
+    # create thread pool
+    episode_list = scrape_episode_list(request.json['url'], request.json['show_name'], request.json['season'])
+    futures = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=DEFAULT_MAX_WORKERS) as executor:
+        for name, link in episode_list:
+            future = executor.submit(scrape_download_link_ep, link)
+            futures.append((name, future))
+
+    # get results
+    download_list = []
+    for name, future in futures:
+        try:
+            download_link = future.result()
+            download_list.append((name, download_link))
+        except:
+            app.logger.error("Failed to get download link for %s" % name)
+    app.logger.info(timer.stop())
+
+    json_list = []
+    for name, link in download_list:
+        json_list.append({'name': name, 'url': link})
+        app.logger.info("Finished %s" % name)
+
+    return json.dumps(json_list)
 
 
 if __name__ == '__main__':
