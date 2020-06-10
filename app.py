@@ -78,8 +78,8 @@ def get_episode():
     return jsonify("download_link", download_link), 200
 
 
-@app.route('/get/season', methods=['POST'])
-def get_season():
+@app.route('/get/season/download_links', methods=['POST'])
+def get_season_download_links():
     if "MAX_WORKERS" in environ:
         max_workers = environ.get("MAX_WORKERS")
     else:
@@ -111,6 +111,26 @@ def get_season():
 
     json_list = []
     for name, link in download_list:
+        json_list.append({'name': name, 'url': link})
+        app.logger.info("Finished %s" % name)
+
+    return json.dumps(json_list)
+
+@app.route('/get/season/episodes', methods=['POST'])
+def get_season_episodes():
+    # validate request body
+    # refactor?
+    if not request.json or not 'url' in request.json or not 'show_name' in request.json or not 'season' in request.json:
+        flask.abort(400)
+
+    timer = Timer()
+    timer.start()
+    # create thread pool
+    episode_list = scrape_episode_list(request.json['url'], request.json['show_name'], request.json['season'])
+    app.logger.info(timer.stop())
+
+    json_list = []
+    for name, link in episode_list:
         json_list.append({'name': name, 'url': link})
         app.logger.info("Finished %s" % name)
 
