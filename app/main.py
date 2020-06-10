@@ -3,7 +3,8 @@ import flask
 # from bs4 import BeautifulSoup
 
 app = flask.Flask(__name__)
-app.config["DEBUG"] = True
+app.run(environ.get('PORT'))
+# app.config["DEBUG"] = True
 
 
 @app.route('/', methods=['GET'])
