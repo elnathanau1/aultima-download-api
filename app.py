@@ -4,7 +4,6 @@ from os import environ
 # from bs4 import BeautifulSoup
 
 app = flask.Flask(__name__)
-app.run(environ.get('PORT'))
 # app.config["DEBUG"] = True
 
 
@@ -16,4 +15,7 @@ def home():
 def health():
     return "OK"
 
-app.run()
+
+if __name__ == '__main__':
+    app.run(environ.get('PORT'))
+
