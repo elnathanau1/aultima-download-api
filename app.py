@@ -93,7 +93,7 @@ def get_season():
 
 @app.route('/status/season/<task_id>')
 def get_season_status(task_id):
-    with Connection(redis.from_url(current_app.config["REDIS_URL"])):
+    with Connection(redis.from_url(redis_url)):
         task = q.fetch_job(task_id)
     if task:
         response_object = {
