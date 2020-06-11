@@ -35,33 +35,6 @@ def health():
 
 
 @app.route('/get/episode', methods=['POST'])
-def create_task():
-    # validate request body
-    if not request.json or not 'url' in request.json:
-        flask.abort(400)
-
-    # get site contents
-    url = request.json['url']
-    scraper = cfscrape.create_scraper()
-    content = scraper.get(url).content
-
-    # beautifulsoup scrape
-    soup = BeautifulSoup(content, 'html.parser')
-    source = soup.find("iframe")["src"]
-    js = scraper.get("https://www1.animeultima.to" + source).content
-
-    js_soup = BeautifulSoup(js, 'html.parser')
-    script_tag = js_soup.findAll("script")
-    script = script_tag[-1].string
-    script = script.strip()
-
-    unpacked = eval('utility.unpack' + script[script.find('}(') + 1:-1])
-    download_link = re.match(r'''var fone="(.*?)";''', unpacked)[1]
-
-    return jsonify("download_link", download_link), 200
-
-
-@app.route('/get/episode', methods=['POST'])
 def get_episode():
     # validate request body
     if not request.json or not 'url' in request.json:
@@ -75,11 +48,11 @@ def get_episode():
     download_link = scrape_download_link_ep(url)
     app.logger.info(timer.stop())
 
-    return jsonify("download_link", download_link), 200
+    return jsonify({"download_link": download_link}), 200
 
 
-@app.route('/get/season', methods=['POST'])
-def get_season():
+@app.route('/get/season/download_links', methods=['POST'])
+def get_season_download_links():
     if "MAX_WORKERS" in environ:
         max_workers = environ.get("MAX_WORKERS")
     else:
@@ -117,6 +90,27 @@ def get_season():
     return json.dumps(json_list)
 
 
+@app.route('/get/season/episodes', methods=['POST'])
+def get_season_episodes():
+    # validate request body
+    # refactor?
+    if not request.json or not 'url' in request.json or not 'show_name' in request.json or not 'season' in request.json:
+        flask.abort(400)
+
+    timer = Timer()
+    timer.start()
+    # create thread pool
+    episode_list = scrape_episode_list(request.json['url'], request.json['show_name'], request.json['season'])
+    app.logger.info(timer.stop())
+
+    json_list = []
+    for name, link in episode_list:
+        json_list.append({'name': name, 'url': link})
+        app.logger.info("Finished %s" % name)
+
+    return json.dumps(json_list)
+
+
 # @cache.memoize(50)
 @retry(stop_max_attempt_number=5, wait_random_min=1000, wait_random_max=4000)
 def scrape_download_link_ep(url):
@@ -125,17 +119,24 @@ def scrape_download_link_ep(url):
     content = scraper.get(url).content
     # beautifulsoup scrape
     soup = BeautifulSoup(content, 'html.parser')
-    iframe = soup.find("iframe")
-    source = iframe["src"]
-    js = scraper.get("https://www1.animeultima.to" + source).content
+    try:
+        iframe = soup.find("iframe")
+        source = iframe["src"]
+        js = scraper.get("https://www1.animeultima.to" + source).content
 
-    js_soup = BeautifulSoup(js, 'html.parser')
-    script_tag = js_soup.findAll("script")
-    script = script_tag[-1].string
-    script = script.strip()
+        js_soup = BeautifulSoup(js, 'html.parser')
+        script_tag = js_soup.findAll("script")
+        script = script_tag[-1].string
+        script = script.strip()
 
-    unpacked = eval('utility.unpack' + script[script.find('}(') + 1:-1])
-    return re.match(r'var fone="(.*?)";', unpacked)[1]
+        unpacked = eval('utility.unpack' + script[script.find('}(') + 1:-1])
+        return re.match(r'var fone="(.*?)";', unpacked)[1]
+    except:
+        options = soup.findAll("option")
+        for option in options:
+            if option.text == 'Subbed: AUEngine':
+                return scrape_download_link_ep(option['value'])
+        return None
 
 
 def scrape_episode_list(url, show_name, season):
